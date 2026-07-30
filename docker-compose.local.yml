@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: parfum
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports: ["5432:5432"]
+    volumes: ["parfum_pg:/var/lib/postgresql/data"]
+  mongo:
+    image: mongo:8
+    ports: ["27017:27017"]
+    volumes: ["parfum_mongo:/data/db"]
+volumes:
+  parfum_pg:
+  parfum_mongo:
