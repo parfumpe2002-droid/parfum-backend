@@ -1,0 +1,15 @@
+PARFUM BACKEND 1.0.5
+
+Esta versión corrige específicamente una base Neon que quedó en 48 filas después de despliegues anteriores.
+
+- La sincronización de los 86 productos ya NO se cancela si APP_SEED_DATA=false.
+- Identifica productos primero por slug/nombre+marca, no por SKU corrupto.
+- Libera SKUs históricos que fueron asignados al perfume equivocado.
+- Reintenta la sincronización hasta 5 veces sin tumbar la API/login.
+- Reutiliza envases por mililitros para evitar duplicados.
+- Aplica los precios del Excel a los 74 perfumes con precio.
+- Los 12 perfumes de mujer quedan sin precio porque el Excel no trae valores.
+- Conserva imagenUrl/imagenPublicId de Cloudinary en los productos existentes.
+
+Después del deploy revisa /api/health; debe indicar version 1.0.5.
+Luego /api/health/catalogo debe llegar a productosActivos >= 86.

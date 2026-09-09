@@ -1,0 +1,22 @@
+CORRECCIÓN APLICADA - ENDPOINT /api/productos
+
+Problema corregido:
+PostgreSQL devolvía "function lower(bytea) does not exist" al listar el catálogo
+sin filtros, porque los parámetros de texto opcionales llegaban como null y podían
+ser inferidos con un tipo incorrecto dentro de la consulta JPQL.
+
+Archivos modificados:
+- src/main/java/com/parfum/controller/ProductoController.java
+- src/main/java/com/parfum/jpa/repository/ProductoRepository.java
+
+Cambios:
+- q, categoria y marca ahora se normalizan a texto en minúsculas.
+- Cuando un filtro no existe, se envía "" en lugar de null.
+- La consulta ya no aplica lower() a parámetros nulos.
+- Se mantiene la búsqueda por nombre, marca, categoría, género, concentración,
+  familia olfativa, acordes, notas y SKU.
+
+Después del push y despliegue en Render, probar:
+https://parfum-backend-jvcw.onrender.com/api/productos
+https://parfum-backend-jvcw.onrender.com/api/productos?q=sauvage
+https://parfum-backend-jvcw.onrender.com/api/productos?categoria=Dise%C3%B1ador

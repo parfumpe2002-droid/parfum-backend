@@ -1,0 +1,36 @@
+services:
+  - type: web
+    name: parfum-backend
+    runtime: docker
+    plan: free
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: SPRING_DATASOURCE_URL
+        sync: false
+      - key: SPRING_DATASOURCE_USERNAME
+        sync: false
+      - key: SPRING_DATASOURCE_PASSWORD
+        sync: false
+      - key: SPRING_DATA_MONGODB_URI
+        sync: false
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+      - key: CORS_ORIGINS
+        value: https://parfum.com.pe,https://www.parfum.com.pe,https://parfum-store-app.netlify.app
+      - key: APP_TOKEN_DAYS
+        value: 7
+      - key: APP_CATALOG_SYNC
+        value: false
+      - key: APP_SEED_DATA
+        value: false
+      - key: APP_ADMIN_EMAIL
+        sync: false
+      - key: APP_ADMIN_PASSWORD
+        sync: false
+      - key: APP_ADMIN_NAME
+        value: Administrador Parfum

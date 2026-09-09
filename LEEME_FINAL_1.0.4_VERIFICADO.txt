@@ -1,0 +1,9 @@
+PARFUM BACKEND 1.0.4 - VERIFICADO ANTES DE PUSH
+
+- 86 perfumes en catalogo/perfumes.json.
+- Precios 3/5/10/20/30 ml cotejados fila por fila con Libro1.xlsx.
+- 74 perfumes tienen precios en el Excel.
+- 12 perfumes de mujer no tienen precios en el Excel: se crean con decants inactivos a S/0 para no inventar valores.
+- Piramide olfativa (salida/corazon/fondo), familia y acordes completos para los 86 perfumes.
+- French Riviera y Bleu de Chanel EDP corregidos con referencias Fragrantica especificas.
+- Las imagenes de Cloudinary de productos existentes no se reemplazan por el seed.

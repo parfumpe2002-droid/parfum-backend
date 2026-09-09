@@ -1,0 +1,23 @@
+PARFUM BACKEND 1.0.3 - CATALOGO/DECANTS
+
+Cambios principales:
+- El backend arranca antes de sincronizar el catalogo: un producto defectuoso no debe tumbar login/API.
+- 86 perfumes en catalogo JSON.
+- 74 perfumes tienen precios de 3/5/10/20/30 ml exactamente segun Libro1.xlsx.
+- 12 perfumes de mujer permanecen sin precio porque el Excel los dejo vacios; no se inventaron precios.
+- Los precios del catalogo se aplican tambien a productos que YA existian en Neon.
+- Se conservan los SKU historicos y las URLs historicas de los 48 productos originales.
+- Las imagenes imagenUrl/imagenPublicId guardadas en Cloudinary NO son reemplazadas por el sincronizador.
+- Se eliminan presentaciones de botella de los productos sincronizados; el comercio principal es DECANT.
+- Se aislan errores por perfume y se reparan conflictos de slug de deploys anteriores sin borrar filas.
+- /api/health/catalogo muestra cuantos productos activos ve Neon.
+- Docker compila siempre target/app.jar.
+
+Log esperado:
+PARFUM backend v1.0.3: API primero, catálogo desacoplado y precios de decants desde catálogo
+CATALOGO: iniciando sincronización de 86 perfumes
+CATALOGO: sincronización terminada. correctos=86, errores=0, activosEnNeon=...
+
+IMPORTANTE:
+APP_SEED_DATA debe estar en true en Render.
+No borres Neon ni Cloudinary.

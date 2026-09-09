@@ -1,0 +1,18 @@
+PARFUM - FIX FINAL BACKEND 1.0.2
+
+Cambios principales:
+- El catálogo YA NO se sincroniza durante ApplicationRunner.
+- Login/health/API pueden iniciar aunque un perfume tenga un conflicto de datos.
+- El catálogo se sincroniza después de ApplicationReadyEvent, en segundo plano.
+- Los productos existentes conservan su SKU.
+- Los productos existentes conservan imagenUrl e imagenPublicId de Cloudinary.
+- Un SKU ocupado por otro producto no se reasigna: un producto nuevo recibe un SKU CAT-* alternativo.
+- Los decants editados desde Admin no vuelven a ser pisados por el seed en reinicios.
+- Catálogo fuente: 86 perfumes; Neon sigue siendo la fuente real para la web.
+
+En Render, comprobar estas líneas:
+PARFUM backend v1.0.2: arranque seguro sin sincronización bloqueante
+Sincronización de catálogo iniciada en segundo plano
+Sincronización de catálogo finalizada. Productos procesados: 86
+
+No borrar Neon, Atlas ni Cloudinary.

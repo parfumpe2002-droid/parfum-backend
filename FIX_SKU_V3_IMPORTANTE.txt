@@ -1,0 +1,16 @@
+PARFUM BACKEND 1.0.1 - FIX SKU V3
+
+Este paquete reemplaza el backend anterior.
+
+Verificacion en Render:
+1. El log de arranque debe decir: Starting ParfumApplication v1.0.1
+2. Debe aparecer: PARFUM CATALOGO FIX-SKU v3 activo
+3. No debe terminar en Application run failed por uq_productos_sku.
+
+El inicializador ahora:
+- repara SKUs intercambiados usando SKU temporales MIG-<id>;
+- identifica productos por slug/nombre+marca antes de reasignar SKU;
+- libera un SKU ocupado por otra fila antes de asignarlo;
+- captura errores de sincronizacion para que un producto no tumbe la API.
+
+No borrar Neon ni MongoDB.

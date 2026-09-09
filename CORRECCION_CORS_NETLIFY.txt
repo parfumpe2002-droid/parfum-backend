@@ -1,0 +1,22 @@
+CORRECCIÓN CORS PARA NETLIFY
+============================
+
+Frontend autorizado:
+https://parfum-store-app.netlify.app
+
+También se permiten los subdominios *.netlify.app para deploy previews y los
+puertos locales usados en NetBeans/Live Server.
+
+Cambios realizados:
+- OPTIONS /** es público para solicitudes preflight.
+- Spring Security usa el CorsConfigurationSource del proyecto.
+- Se admiten GET, POST, PUT, PATCH, DELETE y OPTIONS.
+- Se admiten todos los encabezados solicitados por el navegador.
+- Registro y login continúan siendo endpoints públicos.
+
+En Render la variable CORS_ORIGINS es opcional porque el dominio actual ya está
+incluido en el código. Para agregar otro dominio, usa una lista separada por comas:
+
+CORS_ORIGINS=https://parfum-store-app.netlify.app,https://otro-dominio.com
+
+Después del push espera el deploy de Render y prueba nuevamente el registro.
