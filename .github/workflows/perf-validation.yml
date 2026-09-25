@@ -17,3 +17,8 @@ jobs:
           cache: maven
       - name: Compile backend
         run: mvn -B -DskipTests package
+      - name: Bounded production read load test
+        env:
+          PARFUM_API_BASE: https://parfum-backend-jvcw.onrender.com/api
+          LOAD_ROUNDS: "3"
+        run: python3 performance/http_load_test.py
