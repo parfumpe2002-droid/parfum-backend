@@ -3,10 +3,14 @@ package com.parfum.mongo.document;
 import java.time.Instant;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.index.CompoundIndex;
+import org.springframework.data.mongodb.core.index.CompoundIndexes;
 import org.springframework.data.mongodb.core.mapping.Document;
 
 @Document("resenas")
-@CompoundIndex(name = "resena_usuario_producto", def = "{'usuarioId': 1, 'productoId': 1}", unique = true)
+@CompoundIndexes({
+        @CompoundIndex(name = "resena_usuario_producto", def = "{'usuarioId': 1, 'productoId': 1}", unique = true),
+        @CompoundIndex(name = "resena_producto_creado", def = "{'productoId': 1, 'creadoEn': -1}")
+})
 public class Resena {
     @Id private String id;
     private Long usuarioId;
