@@ -8,6 +8,8 @@ import com.parfum.service.ProductoMapper;
 import jakarta.validation.Valid;
 import java.math.BigDecimal;
 import java.util.List;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -28,6 +30,7 @@ public class ProductoController {
     }
 
     @GetMapping
+    @Cacheable(value = "productos", key = "'list|' + (#q ?: '') + '|' + (#categoria ?: '') + '|' + (#marca ?: '') + '|' + (#minPrecio ?: '') + '|' + (#maxPrecio ?: '') + '|' + #page + '|' + #size + '|' + #sort")
     public Page<ProductoResponse> list(@RequestParam(required = false) String q,
                                        @RequestParam(required = false) String categoria,
                                        @RequestParam(required = false) String marca,
@@ -59,18 +62,21 @@ public class ProductoController {
     }
 
     @GetMapping("/destacados")
+    @Cacheable(value = "productos", key = "'featured'")
     public List<ProductoResponse> featured() {
         return repository.findTop15ByActivoTrueAndDestacadoTrueOrderByActualizadoEnDesc()
                 .stream().map(mapper::toResponse).toList();
     }
 
     @GetMapping("/{id}")
+    @Cacheable(value = "productos", key = "'id|' + #id")
     public ProductoResponse get(@PathVariable Long id) {
         return mapper.toResponse(active(repository.findById(id)
                 .orElseThrow(() -> notFound())));
     }
 
     @GetMapping("/slug/{slug}")
+    @Cacheable(value = "productos", key = "'slug|' + #slug.toLowerCase()")
     public ProductoResponse getBySlug(@PathVariable String slug) {
         Producto product = repository.findBySlugIgnoreCase(slug)
                 .or(() -> repository.findBySlugIgnoreCase(canonicalSlugAlias(slug)))
@@ -79,6 +85,7 @@ public class ProductoController {
     }
 
     @GetMapping("/sku/{sku}")
+    @Cacheable(value = "productos", key = "'sku|' + #sku.toLowerCase()")
     public ProductoResponse getBySku(@PathVariable String sku) {
         return mapper.toResponse(active(repository.findBySkuIgnoreCase(sku)
                 .orElseThrow(() -> notFound())));
@@ -86,6 +93,7 @@ public class ProductoController {
 
     @PostMapping
     @Transactional
+    @CacheEvict(value = "productos", allEntries = true)
     @ResponseStatus(HttpStatus.CREATED)
     public ProductoResponse create(@Valid @RequestBody ProductoRequest request) {
         Producto product = new Producto();
@@ -96,6 +104,7 @@ public class ProductoController {
 
     @PutMapping("/{id}")
     @Transactional
+    @CacheEvict(value = "productos", allEntries = true)
     public ProductoResponse update(@PathVariable Long id, @Valid @RequestBody ProductoRequest request) {
         Producto product = repository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Producto no encontrado"));
@@ -106,6 +115,7 @@ public class ProductoController {
 
     @DeleteMapping("/{id}")
     @Transactional
+    @CacheEvict(value = "productos", allEntries = true)
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable Long id) {
         Producto product = repository.findById(id)

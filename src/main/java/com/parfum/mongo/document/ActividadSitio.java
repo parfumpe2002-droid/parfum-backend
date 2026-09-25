@@ -2,10 +2,12 @@ package com.parfum.mongo.document;
 
 import java.time.Instant;
 import org.springframework.data.annotation.Id;
+import org.springframework.data.mongodb.core.index.CompoundIndex;
 import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.mapping.Document;
 
 @Document("actividad_sitio")
+@CompoundIndex(name = "actividad_tipo_fecha", def = "{'tipo': 1, 'creadoEn': -1}")
 public class ActividadSitio {
     @Id
     private String id;

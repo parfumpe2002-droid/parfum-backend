@@ -80,12 +80,7 @@ public class AdminController {
 
     @GetMapping("/resumen")
     public Map<String, Object> summary() {
-        BigDecimal ventas = pedidos.findAll().stream()
-                .filter(p -> p.getEstadoPago() == EstadoPago.CONFIRMADO)
-                .filter(p -> p.getEstado() != EstadoPedido.CANCELADO)
-                .map(Pedido::getTotal)
-                .filter(Objects::nonNull)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal ventas = pedidos.sumVentasConfirmadas();
 
         LocalDate today = LocalDate.now(BUSINESS_ZONE);
         Instant todayStart = today.atStartOfDay(BUSINESS_ZONE).toInstant();
@@ -112,7 +107,7 @@ public class AdminController {
         result.put("usuarios", usuarios.countByActivoTrue());
         result.put("productos", productos.countByActivoTrue());
         result.put("pedidos", pedidos.count());
-        result.put("pagosPendientes", pedidos.findAll().stream().filter(p -> p.getEstadoPago() == null || p.getEstadoPago() == EstadoPago.PENDIENTE_VERIFICACION).count());
+        result.put("pagosPendientes", pedidos.countPagosPendientes());
         result.put("ventas", ventas);
         result.put("mensajesNuevos", contactos.countByEstado("NUEVO"));
         result.put("resenas", resenas.count());

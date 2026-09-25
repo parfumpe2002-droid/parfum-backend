@@ -3,14 +3,14 @@ package com.parfum.mongo.document;
 import java.time.Instant;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.index.CompoundIndex;
+import org.springframework.data.mongodb.core.index.CompoundIndexes;
 import org.springframework.data.mongodb.core.mapping.Document;
 
 @Document("carrito_variantes")
-@CompoundIndex(
-        name = "carrito_usuario_variante",
-        def = "{'usuarioId': 1, 'varianteClave': 1}",
-        unique = true
-)
+@CompoundIndexes({
+        @CompoundIndex(name = "carrito_usuario_variante", def = "{'usuarioId': 1, 'varianteClave': 1}", unique = true),
+        @CompoundIndex(name = "carrito_usuario_actualizado", def = "{'usuarioId': 1, 'actualizadoEn': -1}")
+})
 public class CarritoItem {
     @Id private String id;
     private Long usuarioId;
