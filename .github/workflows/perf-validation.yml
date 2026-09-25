@@ -1,0 +1,19 @@
+name: Performance branch validation
+
+on:
+  push:
+    branches: [ "perf-optimization-20260924" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: Compile backend
+        run: mvn -B -DskipTests package
