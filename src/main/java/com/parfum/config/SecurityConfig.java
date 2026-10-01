@@ -61,6 +61,7 @@ public class SecurityConfig {
                         // Debe pasar sin autenticación para que CORS pueda responder.
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers("/api/health", "/api/health/**", "/api/seo/**", "/error").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/notificaciones/clave-publica").permitAll()
                         .requestMatchers(HttpMethod.POST,
                                 "/api/auth/register",
                                 "/api/auth/login",
