@@ -14,6 +14,7 @@ import com.parfum.jpa.repository.PedidoRepository;
 import com.parfum.security.AuthenticatedUser;
 import com.parfum.service.AuthService;
 import com.parfum.service.PedidoService;
+import com.parfum.service.WebPushService;
 import jakarta.validation.Valid;
 import java.io.IOException;
 import java.time.Instant;
@@ -36,17 +37,20 @@ public class PedidoController {
     private final PedidoService pedidoService;
     private final AuthService authService;
     private final Cloudinary cloudinary;
+    private final WebPushService webPushService;
     private final String cloudName;
 
     public PedidoController(PedidoRepository repository,
                             PedidoService pedidoService,
                             AuthService authService,
                             Cloudinary cloudinary,
+                            WebPushService webPushService,
                             @Value("${cloudinary.cloud-name}") String cloudName) {
         this.repository = repository;
         this.pedidoService = pedidoService;
         this.authService = authService;
         this.cloudinary = cloudinary;
+        this.webPushService = webPushService;
         this.cloudName = cloudName;
     }
 
@@ -168,7 +172,9 @@ public class PedidoController {
                         : trimToNull(request.observacion()));
             }
         }
-        return pedidoService.toResponse(repository.save(pedido));
+        Pedido saved = repository.save(pedido);
+        webPushService.notificarActualizacionPedido(saved.getUsuario().getId());
+        return pedidoService.toResponse(saved);
     }
 
     @PatchMapping("/{id}/estado")
@@ -195,7 +201,9 @@ public class PedidoController {
             );
         }
         pedido.setEstado(next);
-        return pedidoService.toResponse(repository.save(pedido));
+        Pedido saved = repository.save(pedido);
+        webPushService.notificarActualizacionPedido(saved.getUsuario().getId());
+        return pedidoService.toResponse(saved);
     }
 
     private ComprobanteResponse uploadPaymentProof(MultipartFile file) throws IOException {
