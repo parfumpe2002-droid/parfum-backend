@@ -36,17 +36,20 @@ public class PedidoService {
     private final CarritoRepository carritoRepository;
     private final UsuarioRepository usuarioRepository;
     private final PasswordEncoder passwordEncoder;
+    private final WebPushService webPushService;
 
     public PedidoService(PedidoRepository pedidoRepository,
                          ProductoRepository productoRepository,
                          CarritoRepository carritoRepository,
                          UsuarioRepository usuarioRepository,
-                         PasswordEncoder passwordEncoder) {
+                         PasswordEncoder passwordEncoder,
+                         WebPushService webPushService) {
         this.pedidoRepository = pedidoRepository;
         this.productoRepository = productoRepository;
         this.carritoRepository = carritoRepository;
         this.usuarioRepository = usuarioRepository;
         this.passwordEncoder = passwordEncoder;
+        this.webPushService = webPushService;
     }
 
     @Transactional
@@ -115,6 +118,7 @@ public class PedidoService {
 
         pedido.setTotal(total);
         Pedido saved = pedidoRepository.save(pedido);
+        webPushService.notificarNuevoPedidoAdministradores();
         if (user != null) carritoRepository.deleteByUsuarioId(user.getId());
         return toResponse(saved);
     }
