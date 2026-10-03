@@ -25,16 +25,10 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 @Configuration
 public class SecurityConfig {
 
-    private static final List<String> DEFAULT_ORIGIN_PATTERNS = List.of(
+    private static final List<String> PRODUCTION_ORIGINS = List.of(
             "https://parfum.com.pe",
             "https://www.parfum.com.pe",
-            "https://parfum-store-app.netlify.app",
-            "http://localhost:8383",
-            "http://localhost:5500",
-            "http://localhost:8080",
-            "http://127.0.0.1:5500",
-            "http://127.0.0.1:8383",
-            "http://127.0.0.1:8080"
+            "https://parfum-store-app.netlify.app"
     );
 
     private final TokenAuthFilter tokenAuthFilter;
@@ -47,7 +41,7 @@ public class SecurityConfig {
 
     @Bean
     PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder();
+        return new BCryptPasswordEncoder(12);
     }
 
     @Bean
@@ -57,8 +51,6 @@ public class SecurityConfig {
                 .cors(Customizer.withDefaults())
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        // El navegador envía OPTIONS antes de POST/PUT/PATCH/DELETE.
-                        // Debe pasar sin autenticación para que CORS pueda responder.
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers("/api/health", "/api/health/**", "/api/seo/**", "/error").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/notificaciones/clave-publica").permitAll()
@@ -68,7 +60,7 @@ public class SecurityConfig {
                                 "/api/contactos",
                                 "/api/actividad",
                                 "/api/pedidos",
-                                "/api/pedidos/comprobante").permitAll()
+                                "/api/pedidos/*/comprobante").permitAll()
                         .requestMatchers(HttpMethod.GET,
                                 "/api/productos/**",
                                 "/api/resenas/producto/**",
@@ -95,8 +87,7 @@ public class SecurityConfig {
     CorsConfigurationSource corsConfigurationSource(
             @Value("${app.cors-origins:}") String configuredOrigins) {
 
-        Set<String> originPatterns = new LinkedHashSet<>(DEFAULT_ORIGIN_PATTERNS);
-
+        Set<String> originPatterns = new LinkedHashSet<>(PRODUCTION_ORIGINS);
         if (configuredOrigins != null && !configuredOrigins.isBlank()) {
             Arrays.stream(configuredOrigins.split(","))
                     .map(String::trim)
@@ -106,11 +97,9 @@ public class SecurityConfig {
 
         CorsConfiguration config = new CorsConfiguration();
         config.setAllowedOriginPatterns(new ArrayList<>(originPatterns));
-        config.setAllowedMethods(List.of(
-                "GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"
-        ));
-        config.setAllowedHeaders(List.of("*"));
-        config.setExposedHeaders(List.of("Location", "Authorization"));
+        config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
+        config.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept", "X-Parfum-Guest-Token"));
+        config.setExposedHeaders(List.of("Location"));
         config.setAllowCredentials(false);
         config.setMaxAge(3600L);
 
