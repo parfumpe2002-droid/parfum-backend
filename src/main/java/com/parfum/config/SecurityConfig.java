@@ -58,6 +58,7 @@ public class SecurityConfig {
                                 "/api/auth/register",
                                 "/api/auth/login",
                                 "/api/contactos",
+                                "/api/reclamos",
                                 "/api/actividad",
                                 "/api/pedidos",
                                 "/api/pedidos/*/comprobante").permitAll()
@@ -73,7 +74,7 @@ public class SecurityConfig {
                                 "/api/contactos/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.DELETE,
                                 "/api/contactos", "/api/contactos/**", "/api/pedidos/**").hasRole("ADMIN")
-                        .requestMatchers("/api/admin/**", "/api/imagenes/**").hasRole("ADMIN")
+                        .requestMatchers("/api/admin/**", "/api/imagenes/**", "/api/reclamos/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.POST, "/api/productos/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.PUT, "/api/productos/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.DELETE, "/api/productos/**").hasRole("ADMIN")
