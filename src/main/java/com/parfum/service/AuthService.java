@@ -9,6 +9,7 @@ import com.parfum.jpa.entity.Rol;
 import com.parfum.jpa.entity.Usuario;
 import com.parfum.jpa.repository.AuthTokenRepository;
 import com.parfum.jpa.repository.UsuarioRepository;
+import com.parfum.security.TokenSecurity;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Locale;
@@ -61,11 +62,12 @@ public class AuthService {
     }
 
     public void logout(String authorization) {
-        if (authorization != null && authorization.startsWith("Bearer ")) {
-            tokenRepository.deleteById(authorization.substring(7).trim());
-        }
+        if (authorization == null || !authorization.startsWith("Bearer ")) return;
+        String raw = authorization.substring(7).trim();
+        tokenRepository.deleteById(TokenSecurity.sha256(raw));
+        // Compatibilidad con tokens emitidos antes del hardening.
+        tokenRepository.deleteById(raw);
     }
-
 
     @Transactional
     public void revokeAllTokens(Long userId) {
@@ -85,7 +87,7 @@ public class AuthService {
     private AuthResponse issueToken(Usuario user) {
         String raw = UUID.randomUUID() + "." + UUID.randomUUID();
         AuthToken token = new AuthToken();
-        token.setToken(raw);
+        token.setToken(TokenSecurity.sha256(raw));
         token.setUsuario(user);
         token.setExpiraEn(Instant.now().plus(tokenDays, ChronoUnit.DAYS));
         tokenRepository.save(token);
