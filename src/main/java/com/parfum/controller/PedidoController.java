@@ -61,33 +61,37 @@ public class PedidoController {
         return pedidoService.crear(user == null ? null : authService.requireUser(user.id()), request);
     }
 
-    @PostMapping(value = "/comprobante", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ComprobanteResponse uploadProof(@RequestParam("file") MultipartFile file) throws IOException {
-        return uploadPaymentProof(file);
-    }
-
+    /**
+     * No existe ya un uploader público genérico. El archivo solo puede asociarse
+     * a un pedido existente cuyo propietario esté autenticado o presente el token
+     * temporal de invitado devuelto al crear ese pedido.
+     */
     @PostMapping(value = "/{id}/comprobante", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public PedidoResponse replaceProof(@PathVariable Long id,
                                        @AuthenticationPrincipal AuthenticatedUser authenticated,
+                                       @RequestHeader(value = "X-Parfum-Guest-Token", required = false) String guestToken,
                                        @RequestParam("file") MultipartFile file,
-                                       @RequestParam("numeroOperacion") String numeroOperacion) throws IOException {
+                                       @RequestParam(value = "numeroOperacion", required = false) String numeroOperacion) throws IOException {
         Pedido pedido = repository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Pedido no encontrado"));
         boolean owner = authenticated != null && pedido.getUsuario().getId().equals(authenticated.id());
         boolean admin = authenticated != null && "ADMIN".equalsIgnoreCase(authenticated.rol());
-        if (!owner && !admin) {
+        boolean guest = pedidoService.guestTokenValid(pedido, guestToken);
+        if (!owner && !admin && !guest) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "No puedes modificar este pedido");
         }
         if (pedido.getEstado() == EstadoPedido.ENTREGADO || pedido.getEstado() == EstadoPedido.CANCELADO) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Este pedido ya no admite otro comprobante");
         }
-        if (numeroOperacion == null || numeroOperacion.isBlank() || numeroOperacion.trim().length() > 80) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Ingresa un número de operación válido");
+
+        String operation = trimToNull(numeroOperacion);
+        if (operation != null && operation.length() > 80) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Número de operación demasiado largo");
         }
 
         ComprobanteResponse uploaded = uploadPaymentProof(file);
         String previousPublicId = pedido.getComprobantePublicId();
-        pedido.setNumeroOperacion(numeroOperacion.trim());
+        pedido.setNumeroOperacion(operation);
         pedido.setComprobanteUrl(uploaded.url());
         pedido.setComprobantePublicId(uploaded.publicId());
         pedido.setEstadoPago(EstadoPago.PENDIENTE_VERIFICACION);
@@ -96,12 +100,8 @@ public class PedidoController {
         if (pedido.getEstado() == EstadoPedido.CONFIRMADO) pedido.setEstado(EstadoPedido.PENDIENTE);
         Pedido saved = repository.save(pedido);
 
-        if (isOwnedPaymentProof(previousPublicId)
-                && !previousPublicId.equals(uploaded.publicId())) {
-            try {
-                cloudinary.uploader().destroy(previousPublicId, ObjectUtils.emptyMap());
-            } catch (Exception ignored) {
-            }
+        if (isOwnedPaymentProof(previousPublicId) && !previousPublicId.equals(uploaded.publicId())) {
+            try { cloudinary.uploader().destroy(previousPublicId, ObjectUtils.emptyMap()); } catch (Exception ignored) {}
         }
         return pedidoService.toResponse(saved);
     }
@@ -109,16 +109,14 @@ public class PedidoController {
     @GetMapping("/me")
     public List<PedidoResponse> mine(@AuthenticationPrincipal AuthenticatedUser user) {
         return repository.findByUsuarioIdOrderByCreadoEnDesc(user.id()).stream()
-                .map(pedidoService::toResponse)
-                .toList();
+                .map(pedidoService::toResponse).toList();
     }
 
     @GetMapping
     public List<PedidoResponse> all() {
         return repository.findAll().stream()
                 .sorted(Comparator.comparing(Pedido::getCreadoEn).reversed())
-                .map(pedidoService::toResponse)
-                .toList();
+                .map(pedidoService::toResponse).toList();
     }
 
     @DeleteMapping("/{id}")
@@ -126,13 +124,15 @@ public class PedidoController {
     public void delete(@PathVariable Long id) {
         Pedido pedido = repository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Pedido no encontrado"));
+        if (List.of(EstadoPedido.PREPARANDO, EstadoPedido.ENVIADO, EstadoPedido.ENTREGADO).contains(pedido.getEstado())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "No se puede eliminar un pedido en preparación, enviado o entregado");
+        }
+        if (pedido.isStockAplicado()) pedidoService.liberarStock(pedido);
         String publicId = pedido.getComprobantePublicId();
         repository.delete(pedido);
         if (isOwnedPaymentProof(publicId)) {
-            try {
-                cloudinary.uploader().destroy(publicId, ObjectUtils.emptyMap());
-            } catch (Exception ignored) {
-            }
+            try { cloudinary.uploader().destroy(publicId, ObjectUtils.emptyMap()); } catch (Exception ignored) {}
         }
     }
 
@@ -150,10 +150,15 @@ public class PedidoController {
 
         if (next != EstadoPago.CONFIRMADO
                 && List.of(EstadoPedido.ENVIADO, EstadoPedido.ENTREGADO).contains(pedido.getEstado())) {
-            throw new ResponseStatusException(
-                    HttpStatus.CONFLICT,
-                    "No puedes rechazar el pago de un pedido que ya fue enviado o entregado"
-            );
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "No puedes rechazar el pago de un pedido que ya fue enviado o entregado");
+        }
+
+        if (next == EstadoPago.CONFIRMADO && !pedido.isStockAplicado()) {
+            pedidoService.aplicarStock(pedido);
+        } else if (next != EstadoPago.CONFIRMADO && pedido.isStockAplicado()
+                && !List.of(EstadoPedido.ENVIADO, EstadoPedido.ENTREGADO).contains(pedido.getEstado())) {
+            pedidoService.liberarStock(pedido);
         }
 
         pedido.setEstadoPago(next);
@@ -189,16 +194,15 @@ public class PedidoController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Estado inválido");
         }
         boolean requiresConfirmedPayment = List.of(
-                EstadoPedido.CONFIRMADO,
-                EstadoPedido.PREPARANDO,
-                EstadoPedido.ENVIADO,
-                EstadoPedido.ENTREGADO
-        ).contains(next);
+                EstadoPedido.CONFIRMADO, EstadoPedido.PREPARANDO,
+                EstadoPedido.ENVIADO, EstadoPedido.ENTREGADO).contains(next);
         if (requiresConfirmedPayment && pedido.getEstadoPago() != EstadoPago.CONFIRMADO) {
-            throw new ResponseStatusException(
-                    HttpStatus.CONFLICT,
-                    "Primero debes confirmar el pago del pedido"
-            );
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Primero debes confirmar el pago del pedido");
+        }
+        if (next == EstadoPedido.CANCELADO && pedido.isStockAplicado()
+                && !List.of(EstadoPedido.ENVIADO, EstadoPedido.ENTREGADO).contains(pedido.getEstado())) {
+            pedidoService.liberarStock(pedido);
         }
         pedido.setEstado(next);
         Pedido saved = repository.save(pedido);
@@ -219,7 +223,8 @@ public class PedidoController {
         }
         byte[] bytes = file.getBytes();
         if (!looksLikeAllowedImage(bytes, file.getContentType())) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "El contenido del comprobante no corresponde a una imagen válida");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "El contenido del comprobante no corresponde a una imagen válida");
         }
         Map<?, ?> result = cloudinary.uploader().upload(bytes, ObjectUtils.asMap(
                 "folder", "parfum/comprobantes",
@@ -229,16 +234,13 @@ public class PedidoController {
                 "overwrite", false,
                 "tags", "parfum,comprobante-pago"
         ));
-        return new ComprobanteResponse(
-                String.valueOf(result.get("secure_url")),
-                String.valueOf(result.get("public_id"))
-        );
+        return new ComprobanteResponse(String.valueOf(result.get("secure_url")),
+                String.valueOf(result.get("public_id")));
     }
 
     private boolean allowedProofType(String contentType) {
-        return contentType != null && List.of(
-                "image/jpeg", "image/png", "image/webp"
-        ).contains(contentType.toLowerCase(Locale.ROOT));
+        return contentType != null && List.of("image/jpeg", "image/png", "image/webp")
+                .contains(contentType.toLowerCase(Locale.ROOT));
     }
 
     private boolean looksLikeAllowedImage(byte[] bytes, String contentType) {
