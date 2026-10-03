@@ -7,6 +7,7 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -15,10 +16,10 @@ import java.util.List;
 public final class CommerceDtos {
     private CommerceDtos() {}
 
-    public record CantidadRequest(@NotNull @Min(1) @Max(99) Integer cantidad) {}
+    public record CantidadRequest(@NotNull @Min(1) @Max(20) Integer cantidad) {}
 
     public record CarritoRequest(
-            @NotNull @Min(1) @Max(99) Integer cantidad,
+            @NotNull @Min(1) @Max(20) Integer cantidad,
             Long presentacionId,
             Long productoDecantId,
             @Size(max = 20) String tipoItem) {}
@@ -33,19 +34,22 @@ public final class CommerceDtos {
             Long presentacionId,
             Long productoDecantId,
             @Size(max = 20) String tipoItem,
-            @NotNull @Min(1) @Max(99) Integer cantidad) {}
+            @NotNull @Min(1) @Max(20) Integer cantidad) {}
 
     public record CrearPedidoRequest(
-            @NotEmpty @Size(max = 50) List<@Valid ItemPedidoRequest> items,
+            @NotEmpty @Size(max = 25) List<@Valid ItemPedidoRequest> items,
             Long regaloProductoId,
             @NotBlank @Size(max = 50) String metodoPago,
             @Size(max = 80) String numeroOperacion,
+            // Campos conservados temporalmente para detectar clientes antiguos.
+            // El backend ya no confía en URLs/publicId entregados por el navegador.
             @Size(max = 800) String comprobanteUrl,
             @Size(max = 300) String comprobantePublicId,
-            @NotBlank @Size(max = 350) String direccionEntrega,
+            @NotBlank @Size(min = 5, max = 350) String direccionEntrega,
             @Size(max = 100) String nombreCliente,
             @Email @Size(max = 160) String correoCliente,
-            @Size(max = 30) String telefonoContacto) {}
+            @Pattern(regexp = "^[0-9+()\\-\\s]{7,30}$", message = "Ingresa un celular válido")
+            String telefonoContacto) {}
 
     public record CambiarEstadoRequest(@NotBlank String estado) {}
 
@@ -86,7 +90,8 @@ public final class CommerceDtos {
             Instant pagadoEn,
             String direccionEntrega,
             Instant creadoEn,
-            List<DetallePedidoResponse> detalles) {}
+            List<DetallePedidoResponse> detalles,
+            String guestAccessToken) {}
 
     public record ResenaRequest(
             @NotNull @Min(1) @Max(5) Integer puntuacion,

@@ -54,6 +54,21 @@ public class Pedido {
     @Column(name = "pagado_en")
     private Instant pagadoEn;
 
+    /**
+     * null = pedido histórico creado antes de esta migración. Esos pedidos ya
+     * descontaron stock al crearse, por eso null se interpreta como true.
+     * Los pedidos nuevos se crean explícitamente con false y descuentan stock
+     * únicamente cuando el pago pasa a CONFIRMADO.
+     */
+    @Column(name = "stock_aplicado")
+    private Boolean stockAplicado;
+
+    @Column(name = "guest_access_token_hash", length = 64)
+    private String guestAccessTokenHash;
+
+    @Column(name = "guest_access_expires_at")
+    private Instant guestAccessExpiresAt;
+
     @Column(name = "direccion_entrega", nullable = false, length = 350)
     private String direccionEntrega;
 
@@ -96,6 +111,13 @@ public class Pedido {
     public void setObservacionPago(String observacionPago) { this.observacionPago = observacionPago; }
     public Instant getPagadoEn() { return pagadoEn; }
     public void setPagadoEn(Instant pagadoEn) { this.pagadoEn = pagadoEn; }
+    public boolean isStockAplicado() { return stockAplicado == null || stockAplicado; }
+    public Boolean getStockAplicadoRaw() { return stockAplicado; }
+    public void setStockAplicado(boolean stockAplicado) { this.stockAplicado = stockAplicado; }
+    public String getGuestAccessTokenHash() { return guestAccessTokenHash; }
+    public void setGuestAccessTokenHash(String guestAccessTokenHash) { this.guestAccessTokenHash = guestAccessTokenHash; }
+    public Instant getGuestAccessExpiresAt() { return guestAccessExpiresAt; }
+    public void setGuestAccessExpiresAt(Instant guestAccessExpiresAt) { this.guestAccessExpiresAt = guestAccessExpiresAt; }
     public String getDireccionEntrega() { return direccionEntrega; }
     public void setDireccionEntrega(String direccionEntrega) { this.direccionEntrega = direccionEntrega; }
     public Instant getCreadoEn() { return creadoEn; }

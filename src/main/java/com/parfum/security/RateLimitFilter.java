@@ -16,10 +16,10 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 /**
  * Rate limiting ligero por IP para los endpoints públicos más sensibles.
- * Está pensado para una instancia pequeña de Render y evita que bots comunes
- * disparen login, pedidos, contacto o cargas a Cloudinary miles de veces.
  *
- * No reemplaza la protección DDoS de Render/Netlify: protege la lógica de la app.
+ * En producción Render sirve la aplicación detrás de Cloudflare. Por eso se
+ * prioriza CF-Connecting-IP (reescrito por el proxy) y NO se confía en el
+ * primer X-Forwarded-For enviado por el cliente.
  */
 @Component
 public class RateLimitFilter extends OncePerRequestFilter {
@@ -87,25 +87,33 @@ public class RateLimitFilter extends OncePerRequestFilter {
         String path = request.getRequestURI();
         if (!"POST".equalsIgnoreCase(method)) return null;
 
-        if (path.equals("/api/auth/login")) return new Policy("login", 10, 10 * 60_000L);
-        if (path.equals("/api/auth/register")) return new Policy("register", 5, 60 * 60_000L);
-        if (path.equals("/api/contactos")) return new Policy("contact", 10, 60 * 60_000L);
+        if (path.equals("/api/auth/login")) return new Policy("login", 8, 10 * 60_000L);
+        if (path.equals("/api/auth/register")) return new Policy("register", 4, 60 * 60_000L);
+        if (path.equals("/api/contactos")) return new Policy("contact", 8, 60 * 60_000L);
+        if (path.equals("/api/reclamos")) return new Policy("claim", 3, 60 * 60_000L);
         if (path.equals("/api/actividad")) return new Policy("activity", 120, 10 * 60_000L);
-        if (path.equals("/api/pedidos")) return new Policy("order", 20, 60 * 60_000L);
-        if (path.equals("/api/pedidos/comprobante")) return new Policy("proof", 5, 10 * 60_000L);
-        if (path.matches("/api/pedidos/\\d+/comprobante")) return new Policy("proof-replace", 5, 10 * 60_000L);
+        if (path.equals("/api/pedidos")) return new Policy("order", 8, 60 * 60_000L);
+        if (path.equals("/api/pedidos/comprobante")) return new Policy("proof-authenticated", 5, 15 * 60_000L);
+        if (path.matches("/api/pedidos/\\d+/comprobante")) return new Policy("proof-replace", 5, 15 * 60_000L);
+        if (path.matches("/api/pedidos/\\d+/comprobante-invitado")) return new Policy("proof-guest", 3, 30 * 60_000L);
         return null;
     }
 
-    private String clientIp(HttpServletRequest request) {
-        String forwarded = request.getHeader("X-Forwarded-For");
-        if (forwarded != null && !forwarded.isBlank()) {
-            String first = forwarded.split(",", 2)[0].trim();
-            if (!first.isBlank()) return first;
-        }
-        String cf = request.getHeader("CF-Connecting-IP");
-        if (cf != null && !cf.isBlank()) return cf.trim();
-        return request.getRemoteAddr() == null ? "unknown" : request.getRemoteAddr();
+    String clientIp(HttpServletRequest request) {
+        String cf = cleanIp(request.getHeader("CF-Connecting-IP"));
+        if (cf != null) return cf;
+
+        String remote = cleanIp(request.getRemoteAddr());
+        return remote == null ? "unknown" : remote;
+    }
+
+    private String cleanIp(String value) {
+        if (value == null) return null;
+        String clean = value.trim();
+        if (clean.isBlank() || clean.length() > 64) return null;
+        // IPv4 / IPv6 textual forms only. Do not let arbitrary header content
+        // create unbounded rate-limit bucket keys.
+        return clean.matches("[0-9a-fA-F:.]+") ? clean : null;
     }
 
     private void cleanupOccasionally() {
@@ -113,9 +121,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
         if (count % 500 != 0 && buckets.size() < MAX_BUCKETS) return;
         long now = System.currentTimeMillis();
         buckets.entrySet().removeIf(entry -> now >= entry.getValue().expiresAt);
-        if (buckets.size() > MAX_BUCKETS) {
-            buckets.clear();
-        }
+        if (buckets.size() > MAX_BUCKETS) buckets.clear();
     }
 
     private record Policy(String name, int limit, long windowMillis) {}

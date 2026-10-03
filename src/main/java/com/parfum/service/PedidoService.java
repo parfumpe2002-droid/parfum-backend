@@ -18,7 +18,10 @@ import com.parfum.jpa.repository.PedidoRepository;
 import com.parfum.jpa.repository.ProductoRepository;
 import com.parfum.jpa.repository.UsuarioRepository;
 import com.parfum.mongo.repository.CarritoRepository;
+import com.parfum.security.TokenSecurity;
 import java.math.BigDecimal;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
@@ -59,28 +62,27 @@ public class PedidoService {
         Pedido pedido = new Pedido();
         pedido.setUsuario(owner);
         pedido.setClienteNombre(firstNonBlank(request.nombreCliente(), owner.getNombre()));
-        // Para invitados, el correo escrito en checkout solo pertenece al pedido.
-        // Nunca se usa para buscar ni modificar una cuenta registrada existente.
         pedido.setClienteCorreo(guestOrder ? clean(request.correoCliente())
                 : firstNonBlank(request.correoCliente(), owner.getEmail()));
         pedido.setClienteTelefono(firstNonBlank(request.telefonoContacto(), owner.getTelefono()));
         pedido.setMetodoPago(normalizePaymentMethod(request.metodoPago()));
         pedido.setNumeroOperacion(clean(request.numeroOperacion()));
 
-        String proofUrl = clean(request.comprobanteUrl());
-        String proofPublicId = clean(request.comprobantePublicId());
-        if (proofUrl != null || proofPublicId != null) {
-            if (proofUrl == null || proofPublicId == null
-                    || !proofUrl.startsWith("https://res.cloudinary.com/")
-                    || !proofPublicId.startsWith("parfum/comprobantes/")) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "El comprobante de pago no es válido");
-            }
-            pedido.setComprobanteUrl(proofUrl);
-            pedido.setComprobantePublicId(proofPublicId);
-        }
+        // Nunca confiar en URL/publicId enviados por el navegador. El comprobante
+        // se carga después de crear el pedido y queda asociado en servidor.
+        pedido.setComprobanteUrl(null);
+        pedido.setComprobantePublicId(null);
         pedido.setEstadoPago(EstadoPago.PENDIENTE_VERIFICACION);
         pedido.setDireccionEntrega(request.direccionEntrega().trim());
         pedido.setEstado(EstadoPedido.PENDIENTE);
+        pedido.setStockAplicado(false);
+
+        String guestToken = null;
+        if (guestOrder) {
+            guestToken = UUID.randomUUID() + "." + UUID.randomUUID();
+            pedido.setGuestAccessTokenHash(TokenSecurity.sha256(guestToken));
+            pedido.setGuestAccessExpiresAt(Instant.now().plus(24, ChronoUnit.HOURS));
+        }
 
         BigDecimal total = BigDecimal.ZERO;
         int paidDecantUnits = 0;
@@ -92,7 +94,6 @@ public class PedidoService {
             if ("DECANT".equals(type)) {
                 ProductoDecant decant = resolveDecant(producto, item.productoDecantId());
                 validateCommercial(decant.getPrecio(), decant.getStock(), item.cantidad(), producto.getNombre());
-                decant.setStock(decant.getStock() - item.cantidad());
                 pedido.agregarDetalle(createDecantDetail(producto, decant, item.cantidad(), false));
                 total = total.add(decant.getPrecio().multiply(BigDecimal.valueOf(item.cantidad())));
                 paidDecantUnits += item.cantidad();
@@ -101,12 +102,6 @@ public class PedidoService {
                 BigDecimal price = presentacion == null ? producto.getPrecio() : presentacion.getPrecio();
                 Integer stock = presentacion == null ? producto.getStock() : presentacion.getStock();
                 validateCommercial(price, stock, item.cantidad(), producto.getNombre());
-                if (presentacion == null) {
-                    producto.setStock(stock - item.cantidad());
-                } else {
-                    presentacion.setStock(stock - item.cantidad());
-                    producto.recalcularResumenComercial();
-                }
                 pedido.agregarDetalle(createBottleDetail(producto, presentacion, price, item.cantidad()));
                 total = total.add(price.multiply(BigDecimal.valueOf(item.cantidad())));
             }
@@ -120,7 +115,90 @@ public class PedidoService {
         Pedido saved = pedidoRepository.save(pedido);
         webPushService.notificarNuevoPedidoAdministradores();
         if (user != null) carritoRepository.deleteByUsuarioId(user.getId());
-        return toResponse(saved);
+        return toResponse(saved, guestToken);
+    }
+
+    @Transactional
+    public void aplicarStock(Pedido pedido) {
+        if (pedido.isStockAplicado()) return;
+        for (DetallePedido detail : pedido.getDetalles()) {
+            Producto product = productoRepository.findById(detail.getProductoId())
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT,
+                            "El producto " + detail.getNombreProducto() + " ya no existe"));
+
+            if (detail.getProductoDecantId() != null || "DECANT".equalsIgnoreCase(detail.getTipoItem())
+                    || "REGALO_DECANT".equalsIgnoreCase(detail.getTipoItem())) {
+                ProductoDecant decant = product.getDecants().stream()
+                        .filter(item -> detail.getProductoDecantId() != null
+                                && detail.getProductoDecantId().equals(item.getId()))
+                        .findFirst()
+                        .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT,
+                                "El decant de " + detail.getNombreProducto() + " ya no está disponible"));
+                int current = decant.getStock() == null ? 0 : decant.getStock();
+                if (current < detail.getCantidad()) {
+                    throw new ResponseStatusException(HttpStatus.CONFLICT,
+                            "Stock insuficiente para confirmar " + detail.getNombreProducto());
+                }
+                decant.setStock(current - detail.getCantidad());
+            } else if (detail.getPresentacionId() != null) {
+                ProductoPresentacion presentation = product.getPresentaciones().stream()
+                        .filter(item -> detail.getPresentacionId().equals(item.getId()))
+                        .findFirst()
+                        .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT,
+                                "La presentación de " + detail.getNombreProducto() + " ya no está disponible"));
+                int current = presentation.getStock() == null ? 0 : presentation.getStock();
+                if (current < detail.getCantidad()) {
+                    throw new ResponseStatusException(HttpStatus.CONFLICT,
+                            "Stock insuficiente para confirmar " + detail.getNombreProducto());
+                }
+                presentation.setStock(current - detail.getCantidad());
+            } else {
+                int current = product.getStock() == null ? 0 : product.getStock();
+                if (current < detail.getCantidad()) {
+                    throw new ResponseStatusException(HttpStatus.CONFLICT,
+                            "Stock insuficiente para confirmar " + detail.getNombreProducto());
+                }
+                product.setStock(current - detail.getCantidad());
+            }
+            product.recalcularResumenComercial();
+            productoRepository.save(product);
+        }
+        pedido.setStockAplicado(true);
+    }
+
+    @Transactional
+    public void liberarStock(Pedido pedido) {
+        if (!pedido.isStockAplicado()) return;
+        for (DetallePedido detail : pedido.getDetalles()) {
+            Producto product = productoRepository.findById(detail.getProductoId()).orElse(null);
+            if (product == null) continue;
+
+            if (detail.getProductoDecantId() != null || "DECANT".equalsIgnoreCase(detail.getTipoItem())
+                    || "REGALO_DECANT".equalsIgnoreCase(detail.getTipoItem())) {
+                product.getDecants().stream()
+                        .filter(item -> detail.getProductoDecantId() != null
+                                && detail.getProductoDecantId().equals(item.getId()))
+                        .findFirst()
+                        .ifPresent(item -> item.setStock((item.getStock() == null ? 0 : item.getStock()) + detail.getCantidad()));
+            } else if (detail.getPresentacionId() != null) {
+                product.getPresentaciones().stream()
+                        .filter(item -> detail.getPresentacionId().equals(item.getId()))
+                        .findFirst()
+                        .ifPresent(item -> item.setStock((item.getStock() == null ? 0 : item.getStock()) + detail.getCantidad()));
+            } else {
+                product.setStock((product.getStock() == null ? 0 : product.getStock()) + detail.getCantidad());
+            }
+            product.recalcularResumenComercial();
+            productoRepository.save(product);
+        }
+        pedido.setStockAplicado(false);
+    }
+
+    public boolean guestTokenValid(Pedido pedido, String rawToken) {
+        return pedido != null
+                && pedido.getGuestAccessExpiresAt() != null
+                && pedido.getGuestAccessExpiresAt().isAfter(Instant.now())
+                && TokenSecurity.matches(rawToken, pedido.getGuestAccessTokenHash());
     }
 
     private Producto findProduct(Long productId) {
@@ -181,14 +259,11 @@ public class PedidoService {
                 .findFirst()
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT,
                         "El perfume árabe elegido no tiene decant de 3 ml disponible"));
-        giftDecant.setStock(giftDecant.getStock() - 1);
         pedido.agregarDetalle(createDecantDetail(giftProduct, giftDecant, 1, true));
     }
 
-    private DetallePedido createBottleDetail(Producto producto,
-                                              ProductoPresentacion presentacion,
-                                              BigDecimal price,
-                                              int quantity) {
+    private DetallePedido createBottleDetail(Producto producto, ProductoPresentacion presentacion,
+                                              BigDecimal price, int quantity) {
         DetallePedido detail = new DetallePedido();
         detail.setProductoId(producto.getId());
         detail.setPresentacionId(presentacion == null ? null : presentacion.getId());
@@ -204,10 +279,8 @@ public class PedidoService {
         return detail;
     }
 
-    private DetallePedido createDecantDetail(Producto producto,
-                                              ProductoDecant decant,
-                                              int quantity,
-                                              boolean gift) {
+    private DetallePedido createDecantDetail(Producto producto, ProductoDecant decant,
+                                              int quantity, boolean gift) {
         DecantEnvase envase = decant.getEnvase();
         DetallePedido detail = new DetallePedido();
         detail.setProductoId(producto.getId());
@@ -227,12 +300,10 @@ public class PedidoService {
 
     private void validateCommercial(BigDecimal price, Integer stock, int quantity, String productName) {
         if (price == null || price.signum() <= 0) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Precio no disponible para " + productName);
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Precio no disponible para " + productName);
         }
         if (stock == null || stock < quantity) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Stock insuficiente para " + productName);
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Stock insuficiente para " + productName);
         }
     }
 
@@ -243,10 +314,6 @@ public class PedidoService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Ingresa un número de celular para coordinar tu pedido");
         }
-
-        // Cada checkout invitado recibe una identidad técnica interna. El email real
-        // del comprador se guarda únicamente en Pedido.clienteCorreo. Esto evita que
-        // alguien escriba el correo de una cuenta existente y modifique sus datos.
         Usuario guest = new Usuario();
         guest.setNombre(name);
         guest.setEmail("guest-" + UUID.randomUUID().toString().replace("-", "") + "@parfum.local");
@@ -262,10 +329,8 @@ public class PedidoService {
         return switch (value) {
             case "YAPE" -> "YAPE";
             case "TRANSFERENCIA_BCP", "TRANSFERENCIA", "BCP" -> "TRANSFERENCIA_BCP";
-            default -> throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "Método de pago inválido. Solo se acepta Yape o transferencia BCP"
-            );
+            default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Método de pago inválido. Solo se acepta Yape o transferencia BCP");
         };
     }
 
@@ -279,6 +344,10 @@ public class PedidoService {
     }
 
     public PedidoResponse toResponse(Pedido pedido) {
+        return toResponse(pedido, null);
+    }
+
+    private PedidoResponse toResponse(Pedido pedido, String guestAccessToken) {
         List<DetallePedidoResponse> details = pedido.getDetalles().stream().map(detail ->
                 new DetallePedidoResponse(
                         detail.getProductoId(), detail.getPresentacionId(), detail.getProductoDecantId(),
@@ -291,7 +360,7 @@ public class PedidoService {
                 pedido.getClienteTelefono(), pedido.getTotal(), pedido.getEstado().name(),
                 pedido.getMetodoPago(), paymentStatusOf(pedido).name(), pedido.getNumeroOperacion(),
                 pedido.getComprobanteUrl(), pedido.getObservacionPago(), pedido.getPagadoEn(),
-                pedido.getDireccionEntrega(), pedido.getCreadoEn(), details);
+                pedido.getDireccionEntrega(), pedido.getCreadoEn(), details, guestAccessToken);
     }
 
     private String clean(String value) {
