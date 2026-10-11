@@ -18,7 +18,7 @@ public class HealthController {
 
     @GetMapping
     public Map<String, Object> health() {
-        return Map.of("status", "UP", "service", "parfum-backend", "version", "1.1.1", "time", Instant.now());
+        return Map.of("status", "UP", "service", "parfum-backend", "version", "1.1.1-performance-20261011", "time", Instant.now());
     }
 
     @GetMapping("/catalogo")
