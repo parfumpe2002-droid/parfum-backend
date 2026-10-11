@@ -28,6 +28,8 @@ import org.springframework.http.MediaType;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.web.server.ResponseStatusException;
 
 @RestController
@@ -121,8 +123,10 @@ public class PedidoController {
 
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
+    @Transactional
+    @CacheEvict(value = "productos", allEntries = true)
     public void delete(@PathVariable Long id) {
-        Pedido pedido = repository.findById(id)
+        Pedido pedido = repository.findByIdForUpdate(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Pedido no encontrado"));
         if (List.of(EstadoPedido.PREPARANDO, EstadoPedido.ENVIADO, EstadoPedido.ENTREGADO).contains(pedido.getEstado())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
@@ -137,9 +141,11 @@ public class PedidoController {
     }
 
     @PatchMapping("/{id}/pago")
+    @Transactional
+    @CacheEvict(value = "productos", allEntries = true)
     public PedidoResponse changePaymentStatus(@PathVariable Long id,
                                               @Valid @RequestBody CambiarEstadoPagoRequest request) {
-        Pedido pedido = repository.findById(id)
+        Pedido pedido = repository.findByIdForUpdate(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Pedido no encontrado"));
         EstadoPago next;
         try {
@@ -183,9 +189,11 @@ public class PedidoController {
     }
 
     @PatchMapping("/{id}/estado")
+    @Transactional
+    @CacheEvict(value = "productos", allEntries = true)
     public PedidoResponse changeOrderStatus(@PathVariable Long id,
                                             @Valid @RequestBody CambiarEstadoRequest request) {
-        Pedido pedido = repository.findById(id)
+        Pedido pedido = repository.findByIdForUpdate(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Pedido no encontrado"));
         EstadoPedido next;
         try {

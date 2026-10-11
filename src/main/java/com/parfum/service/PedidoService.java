@@ -24,6 +24,8 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
 import java.util.Locale;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -118,13 +120,26 @@ public class PedidoService {
         return toResponse(saved, guestToken);
     }
 
+    private Map<Long, Producto> bloquearProductos(Pedido pedido, boolean obligatorios) {
+        Map<Long, Producto> bloqueados = new HashMap<>();
+        var ids = pedido.getDetalles().stream()
+                .map(DetallePedido::getProductoId)
+                .filter(java.util.Objects::nonNull).distinct().sorted().toList();
+        for (Long id : ids) {
+            Producto p = productoRepository.findByIdForUpdate(id).orElse(null);
+            if (p == null && obligatorios) throw new ResponseStatusException(
+                    HttpStatus.CONFLICT, "Producto no disponible: " + id);
+            if (p != null) bloqueados.put(id, p);
+        }
+        return bloqueados;
+    }
+
     @Transactional
     public void aplicarStock(Pedido pedido) {
         if (pedido.isStockAplicado()) return;
+        Map<Long, Producto> bloqueados = bloquearProductos(pedido, true);
         for (DetallePedido detail : pedido.getDetalles()) {
-            Producto product = productoRepository.findById(detail.getProductoId())
-                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT,
-                            "El producto " + detail.getNombreProducto() + " ya no existe"));
+            Producto product = bloqueados.get(detail.getProductoId());
 
             if (detail.getProductoDecantId() != null || "DECANT".equalsIgnoreCase(detail.getTipoItem())
                     || "REGALO_DECANT".equalsIgnoreCase(detail.getTipoItem())) {
@@ -169,8 +184,9 @@ public class PedidoService {
     @Transactional
     public void liberarStock(Pedido pedido) {
         if (!pedido.isStockAplicado()) return;
+        Map<Long, Producto> bloqueados = bloquearProductos(pedido, false);
         for (DetallePedido detail : pedido.getDetalles()) {
-            Producto product = productoRepository.findById(detail.getProductoId()).orElse(null);
+            Producto product = bloqueados.get(detail.getProductoId());
             if (product == null) continue;
 
             if (detail.getProductoDecantId() != null || "DECANT".equalsIgnoreCase(detail.getTipoItem())

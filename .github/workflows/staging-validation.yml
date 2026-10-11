@@ -1,0 +1,74 @@
+name: Parfum isolated staging API test
+on:
+  pull_request:
+    branches: ["master"]
+  workflow_dispatch:
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+          POSTGRES_DB: parfum_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      mongo:
+        image: mongo:7
+        ports:
+          - 27017:27017
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+      - name: Package application
+        run: mvn -B -DskipTests package
+      - name: Launch isolated backend
+        env:
+          SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/parfum_ci
+          SPRING_DATASOURCE_USERNAME: postgres
+          SPRING_DATASOURCE_PASSWORD: postgres
+          SPRING_DATA_MONGODB_URI: mongodb://localhost:27017/parfum_ci
+          APP_CATALOG_SYNC: "false"
+          APP_SEED_DATA: "false"
+          PORT: "8080"
+        run: |
+          nohup java -Xmx320m -jar target/app.jar >/tmp/parfum-staging.log 2>&1 &
+          python3 - <<'PY'
+          import json,time,urllib.request
+          for attempt in range(80):
+              try:
+                  with urllib.request.urlopen("http://localhost:8080/api/health",timeout=3) as r:
+                      if json.load(r).get("status")=="UP":
+                          print("BACKEND_READY");break
+              except Exception: time.sleep(2)
+          else:
+              print(open("/tmp/parfum-staging.log").read()[-10000:])
+              raise SystemExit("Parfum startup failed")
+          PY
+      - name: Validate catalog API with both databases
+        run: |
+          python3 - <<'PY'
+          import urllib.request,json
+          for path in ["/api/health","/api/productos?page=0&size=16",
+                       "/api/productos/destacados"]:
+              with urllib.request.urlopen("http://localhost:8080"+path,timeout=15) as response:
+                  data=json.load(response)
+                  assert response.status==200
+                  if "/productos?" in path: assert "content" in data and "totalElements" in data
+                  print("SMOKE_OK",path,flush=True)
+          PY
+      - name: Print backend logs on failure
+        if: failure()
+        run: tail -100 /tmp/parfum-staging.log || true
