@@ -1,0 +1,39 @@
+name: Parfum backend post-deployment smoke
+on:
+  push:
+    branches: ["master"]
+    paths:
+      - ".github/workflows/postdeploy-validation.yml"
+      - "src/main/**"
+      - "pom.xml"
+  workflow_dispatch:
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Wait for new Render backend and verify public read endpoints
+        run: |
+          python3 - <<'PY'
+          import json,time,urllib.request
+          base="https://parfum-backend-jvcw.onrender.com/api"
+          expected="1.1.1-performance-20261011"
+          for attempt in range(50):
+              try:
+                  with urllib.request.urlopen(base+"/health",timeout=25) as r:
+                      data=json.load(r)
+                      assert r.status==200 and data.get("status")=="UP",data
+                      assert data.get("version")==expected, "Previous backend is still deployed: "+str(data.get("version"))
+                  for path in ("/productos?page=0&size=16","/productos/destacados"):
+                      with urllib.request.urlopen(base+path,timeout=25) as r:
+                          data=json.load(r)
+                          assert r.status==200
+                          if path.startswith("/productos?"): assert "content" in data and "totalElements" in data
+                          print("PASS",path,flush=True)
+                  print("DEPLOYED_PARFUM_OK",flush=True)
+                  break
+              except Exception as exc:
+                  print("WAIT",attempt+1,str(exc)[:140],flush=True)
+                  time.sleep(10)
+          else: raise SystemExit("Parfum production backend version was not verified")
+          PY
