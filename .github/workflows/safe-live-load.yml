@@ -1,0 +1,24 @@
+name: Parfum gradual read-only load
+on:
+  push:
+    branches: ["fix/parfum-performance-safety-20261011"]
+    paths:
+      - "performance/safe_live_load.py"
+      - ".github/workflows/safe-live-load.yml"
+  workflow_dispatch:
+jobs:
+  load:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install "aiohttp>=3.10,<4"
+      - name: GET requests only, increasing from 100 to 500 virtual users
+        env:
+          PARFUM_API_BASE: https://parfum-backend-jvcw.onrender.com/api
+          STAGES: "100,300,500"
+          SECONDS_PER_STAGE: "20"
+        run: python performance/safe_live_load.py
