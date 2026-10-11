@@ -25,6 +25,15 @@ import org.springframework.web.server.ResponseStatusException;
 public class CarritoController {
     private final CarritoRepository repository;
     private final ProductoRepository productoRepository;
+    // Protege variantes del mismo usuario en la instancia de Render; si se
+    // usan varias instancias se reemplazara por operaciones atómicas MongoDB.
+    private static final Object[] USER_LOCKS = new Object[256];
+    static {
+        for (int i = 0; i < USER_LOCKS.length; i++) USER_LOCKS[i] = new Object();
+    }
+    private static Object lockFor(Long id) {
+        return USER_LOCKS[Math.floorMod(id.hashCode(), USER_LOCKS.length)];
+    }
 
     public CarritoController(CarritoRepository repository, ProductoRepository productoRepository) {
         this.repository = repository;
@@ -40,6 +49,12 @@ public class CarritoController {
     public CarritoItem add(@AuthenticationPrincipal AuthenticatedUser user,
                            @PathVariable Long productoId,
                            @Valid @RequestBody CarritoRequest request) {
+        synchronized (lockFor(user.id())) {
+            return addLocked(user, productoId, request);
+        }
+    }
+
+    private CarritoItem addLocked(AuthenticatedUser user, Long productoId, CarritoRequest request) {
         Producto producto = findProduct(productoId);
         Selection selection = resolveSelection(producto, request);
         CarritoItem item = repository
@@ -55,6 +70,12 @@ public class CarritoController {
     public CarritoItem update(@AuthenticationPrincipal AuthenticatedUser user,
                               @PathVariable Long productoId,
                               @Valid @RequestBody CarritoRequest request) {
+        synchronized (lockFor(user.id())) {
+            return updateLocked(user, productoId, request);
+        }
+    }
+
+    private CarritoItem updateLocked(AuthenticatedUser user, Long productoId, CarritoRequest request) {
         Producto producto = findProduct(productoId);
         Selection selection = resolveSelection(producto, request);
         validateStock(selection.price(), selection.stock(), request.cantidad());
@@ -73,6 +94,13 @@ public class CarritoController {
                        @RequestParam(required = false) Long presentacionId,
                        @RequestParam(required = false) Long productoDecantId,
                        @RequestParam(required = false) String tipoItem) {
+        synchronized (lockFor(user.id())) {
+            removeLocked(user, productoId, presentacionId, productoDecantId, tipoItem);
+        }
+    }
+
+    private void removeLocked(AuthenticatedUser user, Long productoId, Long presentacionId,
+                              Long productoDecantId, String tipoItem) {
         if (presentacionId == null && productoDecantId == null && (tipoItem == null || tipoItem.isBlank())) {
             repository.deleteByUsuarioIdAndProductoId(user.id(), productoId);
             return;
@@ -85,7 +113,9 @@ public class CarritoController {
     @DeleteMapping("/me")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void clear(@AuthenticationPrincipal AuthenticatedUser user) {
-        repository.deleteByUsuarioId(user.id());
+        synchronized (lockFor(user.id())) {
+            repository.deleteByUsuarioId(user.id());
+        }
     }
 
     private Producto findProduct(Long id) {
