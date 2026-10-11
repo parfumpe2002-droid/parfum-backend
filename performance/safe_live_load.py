@@ -45,9 +45,16 @@ async def main():
     print("Read-only Parfum test:",BASE,flush=True)
     connector=aiohttp.TCPConnector(limit=160,limit_per_host=160)
     async with aiohttp.ClientSession(connector=connector,timeout=aiohttp.ClientTimeout(total=15),headers={"User-Agent":"ParfumPerfProbe/1.0"}) as s:
-        async with s.get(urljoin(BASE,"health")) as r:
-            print("WARMUP",r.status,flush=True)
-            if r.status!=200: raise SystemExit("Unhealthy backend")
+        for attempt in range(10):
+            try:
+                async with s.get(urljoin(BASE,"health"), timeout=aiohttp.ClientTimeout(total=30)) as r:
+                    print("WARMUP",r.status,"attempt",attempt+1,flush=True)
+                    if r.status==200:break
+            except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
+                print("WARMUP_RETRY",attempt+1,type(exc).__name__,flush=True)
+            await asyncio.sleep(8)
+        else:
+            raise SystemExit("Unhealthy backend after warmup")
         results=[]
         for count in STAGES:
             result=await stage(s,count)
