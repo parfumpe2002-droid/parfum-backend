@@ -62,11 +62,12 @@ jobs:
           python3 - <<'PY'
           import urllib.request,json
           for path in ["/api/health","/api/productos?page=0&size=16",
-                       "/api/productos/destacados"]:
+                       "/api/productos/destacados","/api/combos"]:
               with urllib.request.urlopen("http://localhost:8080"+path,timeout=15) as response:
                   data=json.load(response)
                   assert response.status==200
                   if "/productos?" in path: assert "content" in data and "totalElements" in data
+                  if "/combos" in path: assert isinstance(data,list) and data == []
                   print("SMOKE_OK",path,flush=True)
           PY
       - name: Print backend logs on failure
