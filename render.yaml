@@ -2,7 +2,7 @@ services:
   - type: web
     name: parfum-backend
     runtime: docker
-    plan: free
+    plan: 0.5c-512mb
     healthCheckPath: /api/health
     autoDeploy: true
     envVars:

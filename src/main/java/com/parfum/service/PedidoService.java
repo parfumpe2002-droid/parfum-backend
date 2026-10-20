@@ -28,14 +28,19 @@ import java.util.Map;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class PedidoService {
+    private static final Logger LOGGER = LoggerFactory.getLogger(PedidoService.class);
     private final PedidoRepository pedidoRepository;
     private final ProductoRepository productoRepository;
     private final CarritoRepository carritoRepository;
@@ -115,8 +120,20 @@ public class PedidoService {
 
         pedido.setTotal(total);
         Pedido saved = pedidoRepository.save(pedido);
-        webPushService.notificarNuevoPedidoAdministradores();
         if (user != null) carritoRepository.deleteByUsuarioId(user.getId());
+        // Evitar avisar de compras que aún no se han confirmado en PostgreSQL.
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                try {
+                    webPushService.notificarNuevoPedidoAdministradores();
+                } catch (RuntimeException error) {
+                    // La orden ya está confirmada: un problema con Push no debe
+                    // devolver un error de compra ni provocar un reintento duplicado.
+                    LOGGER.warn("Pedido {} registrado pero no se pudo encolar notificación Push", saved.getId(), error);
+                }
+            }
+        });
         return toResponse(saved, guestToken);
     }
 
