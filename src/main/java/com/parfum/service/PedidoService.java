@@ -32,6 +32,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
@@ -115,8 +117,14 @@ public class PedidoService {
 
         pedido.setTotal(total);
         Pedido saved = pedidoRepository.save(pedido);
-        webPushService.notificarNuevoPedidoAdministradores();
         if (user != null) carritoRepository.deleteByUsuarioId(user.getId());
+        // Evitar avisar de compras que aún no se han confirmado en PostgreSQL.
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                webPushService.notificarNuevoPedidoAdministradores();
+            }
+        });
         return toResponse(saved, guestToken);
     }
 
