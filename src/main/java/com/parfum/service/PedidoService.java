@@ -28,6 +28,8 @@ import java.util.Map;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -38,6 +40,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class PedidoService {
+    private static final Logger LOGGER = LoggerFactory.getLogger(PedidoService.class);
     private final PedidoRepository pedidoRepository;
     private final ProductoRepository productoRepository;
     private final CarritoRepository carritoRepository;
@@ -122,7 +125,13 @@ public class PedidoService {
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override
             public void afterCommit() {
-                webPushService.notificarNuevoPedidoAdministradores();
+                try {
+                    webPushService.notificarNuevoPedidoAdministradores();
+                } catch (RuntimeException error) {
+                    // La orden ya está confirmada: un problema con Push no debe
+                    // devolver un error de compra ni provocar un reintento duplicado.
+                    LOGGER.warn("Pedido {} registrado pero no se pudo encolar notificación Push", saved.getId(), error);
+                }
             }
         });
         return toResponse(saved, guestToken);
