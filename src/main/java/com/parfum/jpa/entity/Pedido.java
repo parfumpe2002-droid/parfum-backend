@@ -72,6 +72,21 @@ public class Pedido {
     @Column(name = "direccion_entrega", nullable = false, length = 350)
     private String direccionEntrega;
 
+    @Column(name = "metodo_envio", length = 20)
+    private String metodoEnvio;
+
+    @Column(name = "nombre_destinatario", length = 100)
+    private String nombreDestinatario;
+
+    @Column(name = "agencia_envio", length = 120)
+    private String agenciaEnvio;
+
+    @Column(name = "documento_destinatario", length = 30)
+    private String documentoDestinatario;
+
+    @Column(name = "envio_gratis")
+    private Boolean envioGratis;
+
     @Column(name = "creado_en", nullable = false, updatable = false)
     private Instant creadoEn = Instant.now();
 
@@ -120,6 +135,16 @@ public class Pedido {
     public void setGuestAccessExpiresAt(Instant guestAccessExpiresAt) { this.guestAccessExpiresAt = guestAccessExpiresAt; }
     public String getDireccionEntrega() { return direccionEntrega; }
     public void setDireccionEntrega(String direccionEntrega) { this.direccionEntrega = direccionEntrega; }
+    public String getMetodoEnvio() { return metodoEnvio; }
+    public void setMetodoEnvio(String metodoEnvio) { this.metodoEnvio = metodoEnvio; }
+    public String getNombreDestinatario() { return nombreDestinatario; }
+    public void setNombreDestinatario(String nombreDestinatario) { this.nombreDestinatario = nombreDestinatario; }
+    public String getAgenciaEnvio() { return agenciaEnvio; }
+    public void setAgenciaEnvio(String agenciaEnvio) { this.agenciaEnvio = agenciaEnvio; }
+    public String getDocumentoDestinatario() { return documentoDestinatario; }
+    public void setDocumentoDestinatario(String documentoDestinatario) { this.documentoDestinatario = documentoDestinatario; }
+    public boolean isEnvioGratis() { return Boolean.TRUE.equals(envioGratis); }
+    public void setEnvioGratis(boolean envioGratis) { this.envioGratis = envioGratis; }
     public Instant getCreadoEn() { return creadoEn; }
     public void setCreadoEn(Instant creadoEn) { this.creadoEn = creadoEn; }
     public List<DetallePedido> getDetalles() { return detalles; }
