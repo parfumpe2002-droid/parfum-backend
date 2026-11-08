@@ -80,7 +80,29 @@ public class PedidoService {
         pedido.setComprobanteUrl(null);
         pedido.setComprobantePublicId(null);
         pedido.setEstadoPago(EstadoPago.PENDIENTE_VERIFICACION);
+        String envio = clean(request.metodoEnvio());
+        envio = envio == null ? "COORDINAR" : envio.toUpperCase(Locale.ROOT);
+        if (!Set.of("SHALOM", "INDRIVE", "COORDINAR").contains(envio)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Selecciona Shalom o InDrive");
+        }
+        if (!"COORDINAR".equals(envio)) {
+            if (clean(request.nombreDestinatario()) == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Indica quién recibirá el pedido");
+            }
+            if ("SHALOM".equals(envio) && (clean(request.agenciaEnvio()) == null
+                    || clean(request.documentoDestinatario()) == null)) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Para Shalom indica la agencia y documento del destinatario");
+            }
+            if ("SHALOM".equals(envio) && !request.documentoDestinatario().trim().matches("[A-Za-z0-9]{8,12}")) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Ingresa un DNI o CE válido");
+            }
+        }
         pedido.setDireccionEntrega(request.direccionEntrega().trim());
+        pedido.setMetodoEnvio(envio);
+        pedido.setNombreDestinatario(clean(request.nombreDestinatario()));
+        pedido.setAgenciaEnvio("SHALOM".equals(envio) ? clean(request.agenciaEnvio()) : null);
+        pedido.setDocumentoDestinatario("SHALOM".equals(envio) ? clean(request.documentoDestinatario()) : null);
         pedido.setEstado(EstadoPedido.PENDIENTE);
         pedido.setStockAplicado(false);
 
@@ -119,6 +141,8 @@ public class PedidoService {
         }
 
         pedido.setTotal(total);
+        // El umbral se verifica con los precios validados del catálogo, no con el subtotal del navegador.
+        pedido.setEnvioGratis(total.compareTo(new BigDecimal("299.00")) >= 0);
         Pedido saved = pedidoRepository.save(pedido);
         if (user != null) carritoRepository.deleteByUsuarioId(user.getId());
         // Evitar avisar de compras que aún no se han confirmado en PostgreSQL.
@@ -393,7 +417,9 @@ public class PedidoService {
                 pedido.getClienteTelefono(), pedido.getTotal(), pedido.getEstado().name(),
                 pedido.getMetodoPago(), paymentStatusOf(pedido).name(), pedido.getNumeroOperacion(),
                 pedido.getComprobanteUrl(), pedido.getObservacionPago(), pedido.getPagadoEn(),
-                pedido.getDireccionEntrega(), pedido.getCreadoEn(), details, guestAccessToken);
+                pedido.getDireccionEntrega(), pedido.getMetodoEnvio(), pedido.getNombreDestinatario(),
+                pedido.getAgenciaEnvio(), pedido.getDocumentoDestinatario(), pedido.isEnvioGratis(),
+                pedido.getCreadoEn(), details, guestAccessToken);
     }
 
     private String clean(String value) {
