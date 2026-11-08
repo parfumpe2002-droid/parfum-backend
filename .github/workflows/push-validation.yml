@@ -1,6 +1,13 @@
 name: Push notification validation
 
 on:
+  push:
+    branches: [ "master" ]
+    paths:
+      - "src/main/java/com/parfum/dto/CommerceDtos.java"
+      - "src/main/java/com/parfum/jpa/entity/Pedido.java"
+      - "src/main/java/com/parfum/service/PedidoService.java"
+      - ".github/workflows/push-validation.yml"
   pull_request:
     branches: [ "master" ]
   workflow_dispatch:
