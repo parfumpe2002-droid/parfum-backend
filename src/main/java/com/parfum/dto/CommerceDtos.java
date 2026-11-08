@@ -46,6 +46,10 @@ public final class CommerceDtos {
             @Size(max = 800) String comprobanteUrl,
             @Size(max = 300) String comprobantePublicId,
             @NotBlank @Size(min = 5, max = 350) String direccionEntrega,
+            @Size(max = 20) String metodoEnvio,
+            @Size(max = 100) String nombreDestinatario,
+            @Size(max = 120) String agenciaEnvio,
+            @Size(max = 30) String documentoDestinatario,
             @Size(max = 100) String nombreCliente,
             @Email @Size(max = 160) String correoCliente,
             @Pattern(regexp = "^[0-9+()\\-\\s]{7,30}$", message = "Ingresa un celular válido")
@@ -89,6 +93,11 @@ public final class CommerceDtos {
             String observacionPago,
             Instant pagadoEn,
             String direccionEntrega,
+            String metodoEnvio,
+            String nombreDestinatario,
+            String agenciaEnvio,
+            String documentoDestinatario,
+            boolean envioGratis,
             Instant creadoEn,
             List<DetallePedidoResponse> detalles,
             String guestAccessToken) {}
